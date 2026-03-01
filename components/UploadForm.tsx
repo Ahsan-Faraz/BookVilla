@@ -18,7 +18,6 @@ import { toast } from 'sonner';
 import {checkBookExists, createBook, saveBookSegments} from "@/lib/actions/book.actions";
 import {useRouter} from "next/navigation";
 import {parsePDFFile} from "@/lib/utils";
-import {upload} from "@vercel/blob/client";
 
 const UploadForm = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,6 +28,29 @@ const UploadForm = () => {
     useEffect(() => {
         setIsMounted(true);
     }, []);
+
+    const uploadFile = async (
+        filename: string,
+        file: File | Blob,
+        contentType: string
+    ): Promise<{ url: string; pathname: string }> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('filename', filename);
+        formData.append('contentType', contentType);
+
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Upload failed');
+        }
+
+        return res.json();
+    };
 
     const form = useForm<BookUploadFormValues>({
         resolver: zodResolver(UploadSchema),
@@ -70,31 +92,20 @@ const UploadForm = () => {
                 return;
             }
 
-            const uploadedPdfBlob = await upload(fileTitle, pdfFile, {
-                access: 'public',
-                handleUploadUrl: '/api/upload',
-                contentType: 'application/pdf'
-            });
+            const uploadedPdfBlob = await uploadFile(fileTitle, pdfFile, 'application/pdf');
 
             let coverUrl: string;
 
             if(data.coverImage) {
                 const coverFile = data.coverImage;
-                const uploadedCoverBlob = await upload(`${fileTitle}_cover.png`, coverFile, {
-                    access: 'public',
-                    handleUploadUrl: '/api/upload',
-                    contentType: coverFile.type
-                });
+                const uploadedCoverBlob = await uploadFile(`${fileTitle}_cover.png`, coverFile, coverFile.type);
                 coverUrl = uploadedCoverBlob.url;
             } else {
                 const response = await fetch(parsedPDF.cover)
                 const blob = await response.blob();
+                const coverFile = new File([blob], `${fileTitle}_cover.png`, { type: 'image/png' });
 
-                const uploadedCoverBlob = await upload(`${fileTitle}_cover.png`, blob, {
-                    access: 'public',
-                    handleUploadUrl: '/api/upload',
-                    contentType: 'image/png'
-                });
+                const uploadedCoverBlob = await uploadFile(`${fileTitle}_cover.png`, coverFile, 'image/png');
                 coverUrl = uploadedCoverBlob.url;
             }
 
